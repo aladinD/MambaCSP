@@ -5,6 +5,8 @@ __pycache__/
 
 # Folders
 venv/
+data/
+model_weights/
 
 # Big JSONS
 *_ds.json
