@@ -21,9 +21,14 @@ if __name__ == "__main__":
     # demo
     device = torch.device('cuda:1')
     is_U2D = 0
-    prev_path = "./test_data/H_U_his_test.mat"  # path of dataset [H_U_his_test]
-    pred_path = "./test_data/H_U_pre_test.mat"  # path of dataset [H_U_pre_test]
-    pred_path_fdd = "./test_data/H_D_pre_test.mat"  # path of dataset [H_D_pre_test]
+    # prev_path = "./test_data/H_U_his_test.mat"  # path of dataset [H_U_his_test]
+    # pred_path = "./test_data/H_U_pre_test.mat"  # path of dataset [H_U_pre_test]
+    # pred_path_fdd = "./test_data/H_D_pre_test.mat"  # path of dataset [H_D_pre_test]
+
+    prev_path = "./data/dataset/test/H_U_his_test.mat"  # path of dataset [H_U_his_test]
+    pred_path = "./data/dataset/test/H_U_pre_test.mat"  # path of dataset [H_U_pre_test]
+    pred_path_fdd = "./data/dataset/test/H_D_pre_test.mat"  # path of dataset [H_D_pre_test]
+
     model_path = {
         'gpt': './Weights/full_shot_tdd/U2U_LLM4CP.pth',
         'transformer': './Weights/full_shot_tdd/U2U_trans.pth',
