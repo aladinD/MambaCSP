@@ -17,7 +17,19 @@ import tqdm
 from pvec import pronyvec
 from PAD import PAD3
 
+# Quick info --- The .mat tensors come with many axes:
+# (v b l k n m c)
+# v = velocity index (10 speeds)
+# b = per-speed batch index
+# l = time length (history + future)
+# k = subcarriers (K=48)
+# n, m ≈ antenna layout dims (so n*m = Nt)
+# c = polarization (or similar)
+
 if __name__ == "__main__":
+    # out name
+    out_name = "test_fdd.csv"
+
     # demo
     device = torch.device('cuda:1')
     is_U2D = 0
@@ -29,15 +41,35 @@ if __name__ == "__main__":
     pred_path = "./data/dataset/test/H_U_pre_test.mat"  # path of dataset [H_U_pre_test]
     pred_path_fdd = "./data/dataset/test/H_D_pre_test.mat"  # path of dataset [H_D_pre_test]
 
-    model_path = {
-        'gpt': './Weights/full_shot_tdd/U2U_LLM4CP.pth',
-        'transformer': './Weights/full_shot_tdd/U2U_trans.pth',
-        'cnn': './Weights/full_shot_tdd/U2U_cnn.pth',
-        'gru': './Weights/full_shot_tdd/U2U_gru.pth',
-        'lstm': './Weights/full_shot_tdd/U2U_lstm.pth',
-        'rnn': './Weights/full_shot_tdd/U2U_rnn.pth'
-    }
+    if is_U2D == 0:
+        print("TDD TESTING")
+        model_path = {
+            'my_gpt': './model_weights/train_acc/full_shot_tdd/U2U_LLM4CP_pickled.pth',
+            'gpt': './data/model/weights/full_shot_tdd/U2U_LLM4CP.pth',
+            'transformer': './data/model/weights/full_shot_tdd/U2U_trans.pth',
+            'cnn': './data/model/weights/full_shot_tdd/U2U_cnn.pth',
+            'gru': './data/model/weights/full_shot_tdd/U2U_gru.pth',
+            'lstm': './data/model/weights/full_shot_tdd/U2U_lstm.pth',
+            'rnn': './data/model/weights/full_shot_tdd/U2U_rnn.pth'
+        }
+    elif is_U2D == 1:
+        print("FDD TESTING")
+        model_path = {
+            'my_gpt': './model_weights/train_acc/full_shot_fdd/U2U_LLM4CP_pickled.pth',
+            'gpt': './data/model/weights/full_shot_fdd/U2U_LLM4CP.pth',
+            'transformer': './data/model/weights/full_shot_fdd/U2U_trans.pth',
+            'cnn': './data/model/weights/full_shot_fdd/U2U_cnn.pth',
+            'gru': './data/model/weights/full_shot_fdd/U2U_gru.pth',
+            'lstm': './data/model/weights/full_shot_fdd/U2U_lstm.pth',
+            'rnn': './data/model/weights/full_shot_fdd/U2U_rnn.pth'
+        }
+    else:
+        raise ValueError("is_U2D should be 0 or 1")
+
     model_test_enable = ['gpt', 'transformer', 'cnn', 'gru', 'lstm', 'rnn', 'np', 'pad']
+    if 'my_gpt' in model_path:
+        model_test_enable.insert(0, 'my_gpt')
+    
     prev_len = 16
     label_len = 12
     pred_len = 4
@@ -64,15 +96,21 @@ if __name__ == "__main__":
             test_loss_stack_se0 = []
             test_data_prev = test_data_prev_base[[speed], ...]
             test_data_pred = test_data_pred_base[[speed], ...]
+
+            # Mat tensors get reshaped for batching and per-antenna processing
+            # New shape will be: (batch, antennas, time, subcarriers) = (lens, Nt, L, K)
             test_data_prev = rearrange(test_data_prev, 'v b l k n m c -> (v b c) (n m) l (k)')
             test_data_pred = rearrange(test_data_pred, 'v b l k n m c -> (v b c) (n m) l (k)')
+
+            # add noise (SNR ≈ 18 dB) to both input and target via noise(...), and normalize both by an RMS-like scale computed from the input
             test_data_prev = noise(test_data_prev, 18)
             test_data_pred = noise(test_data_pred, 18)
             std = np.sqrt(np.std(np.abs(test_data_prev) ** 2))
             test_data_prev = test_data_prev / std
             test_data_pred = test_data_pred / std
             lens, _, _, _ = test_data_prev.shape
-            if model_test_enable[i] in ['gpt', 'transformer', 'rnn', 'lstm', 'gru', 'cnn', 'np']:
+
+            if model_test_enable[i] in ['my_gpt', 'gpt', 'transformer', 'rnn', 'lstm', 'gru', 'cnn', 'np']:
                 if model_test_enable[i] != 'np':
                     model.eval()
                 prev_data = LoadBatch_ofdm_2(test_data_prev)
@@ -85,7 +123,7 @@ if __name__ == "__main__":
                         pred = pred_data[cyt * bs:(cyt + 1) * bs, :, :].to(device)
                         prev = rearrange(prev, 'b m l k -> (b m) l k')
                         pred = rearrange(pred, 'b m l k -> (b m) l k')
-                        if model_test_enable[i] == 'gpt':
+                        if model_test_enable[i] in ['gpt', 'my_gpt']:
                             out = model(prev, None, None, None)
                         elif model_test_enable[i] == 'transformer':
                             encoder_input = prev
@@ -140,7 +178,10 @@ if __name__ == "__main__":
                 NMSE[i].append(np.nanmean(np.array(test_loss_stack)))
                 SE[i].append(np.nanmean(np.array(test_loss_stack_se)) / np.nanmean(np.array(test_loss_stack_se0)))
 
-    fout_nmse = open(time.strftime("%Y_%m_%d_%H_%M_%S", time.localtime()) + "_data_nmse_tdd_full.csv", "w")
+    if out_name is not None:
+        fout_nmse = open(out_name, "w")
+    else:
+        fout_nmse = open(time.strftime("%Y_%m_%d_%H_%M_%S", time.localtime()) + "_data_nmse_tdd_full.csv", "w")
     for row in NMSE:
         row = list(map(str, row))
         fout_nmse.write(','.join(row))

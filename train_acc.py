@@ -85,13 +85,13 @@ def parse_args():
 
     # Training
     p.add_argument("--epochs", type=int, default=500)
-    p.add_argument("--per-gpu-batch-size", type=int, default=128,
+    p.add_argument("--per-gpu-batch-size", type=int, default=64,
                    help="Per-process batch size (NOT global).")
     p.add_argument("--global-batch-size", type=int, default=0,
                    help="Optional: set a desired global batch and we will compute per-GPU + accumulation.")
     p.add_argument("--accum-steps", type=int, default=1,
                    help="Gradient accumulation steps (effective batch = per_gpu * world_size * accum_steps).")
-    p.add_argument("--lr", type=float, default=1e-4)
+    p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--weight-decay", type=float, default=1e-4)
     p.add_argument("--num-workers", type=int, default=8)
     p.add_argument("--save-path", type=str, default="model_weights/U2U_LLM4CP.pth")
@@ -213,6 +213,18 @@ def validate(model, loader, criterion, device, autocast_dtype):
 def main():
     args = parse_args()
 
+    # Sanity message so we don't mix up files
+    if args.u2d:
+        if "D_pre" not in os.path.basename(args.train_tgt):
+            if is_main():
+                print(f"[WARN] --u2d=1 but train-tgt looks uplink-ish: {args.train_tgt}")
+                print("       Make sure this points to H_D_pre_train.mat (downlink).")
+    else:
+        if "U_pre" not in os.path.basename(args.train_tgt):
+            if is_main():
+                print(f"[WARN] --u2d=0 but train-tgt doesn't look like H_U_pre_*.mat: {args.train_tgt}")
+
+
     # Perf knobs (safe when shapes are static-ish)
     torch.backends.cudnn.benchmark = True
     torch.set_float32_matmul_precision("high")
@@ -305,6 +317,8 @@ def main():
             weight_decay=args.weight_decay
         )
 
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=150, gamma=0.1)
+
     # AMP dtype
     if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
         autocast_dtype = torch.bfloat16
@@ -352,6 +366,8 @@ def main():
             if is_main():
                 print(f"[Checkpoint] New best val NMSE: {best_loss:.7f} -> saved to {args.save_path}")
 
+        scheduler.step()
+
     if is_main():
         total, learn = count_params(model.module if ddp_enabled else model)
         print(f"FINAL | Number of parameters: {total/1e6:.5f}M | Learnable: {learn/1e6:.5f}M")
@@ -362,3 +378,14 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# Train for TDD
+# torchrun --nproc_per_node=8 train_acc.py --save-path model_weights/train_acc/full_shot_tdd/SOME_FOLDER/U2U_LLM4CP.pth
+
+# Train for FDD
+# torchrun --nproc_per_node=8 train_acc.py \
+#   --u2d 1 \
+#   --train-his ./data/dataset/train/H_U_his_train.mat \
+#   --train-tgt ./data/dataset/train/H_D_pre_train.mat \
+#   --save-path model_weights/train_acc/full_shot_fdd/U2D_LLM4CP.pth
