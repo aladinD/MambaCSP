@@ -382,6 +382,11 @@ if __name__ == "__main__":
 
 # Train for TDD
 # torchrun --nproc_per_node=8 train_acc.py --save-path model_weights/train_acc/full_shot_tdd/SOME_FOLDER/U2U_LLM4CP.pth
+# torchrun --nproc_per_node=8 train_acc.py \
+#   --u2d 0 \
+#   --train-his ./data/dataset/train/H_U_his_train.mat \
+#   --train-tgt ./data/dataset/train/H_U_pre_train.mat \
+#   --save-path model_weights/train_acc/full_shot_tdd/U2U_LLM4CP.pth
 
 # Train for FDD
 # torchrun --nproc_per_node=8 train_acc.py \

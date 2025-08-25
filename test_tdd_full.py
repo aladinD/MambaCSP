@@ -28,7 +28,7 @@ from PAD import PAD3
 
 if __name__ == "__main__":
     # out name
-    out_name = "test_fdd.csv"
+    out_name = "test_tdd_new.csv"
 
     # demo
     device = torch.device('cuda:1')
