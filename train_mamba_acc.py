@@ -1,0 +1,421 @@
+#!/usr/bin/env python3
+# train.py
+"""
+LLM4CP Training Script (DDP + AMP) — GPT-2 or MAMBA backbone
+
+- Set device BEFORE any GPU allocations.
+- Build model on CPU (use_gpu=0) to avoid GPU:0 pre-allocation, then move to rank's GPU.
+- Use per-GPU batch size + optional gradient accumulation.
+- Clean state_dict checkpoints. AMP enabled. Proper DistributedSampler usage.
+
+Examples
+--------
+# TDD + GPT-2 (original)
+torchrun --nproc_per_node=8 train.py \
+  --backbone gpt2 \
+  --u2d 0 \
+  --train-his ./data/dataset/train/H_U_his_train.mat \
+  --train-tgt ./data/dataset/train/H_U_pre_train.mat \
+  --save-path model_weights/train_acc/full_shot_tdd/U2U_GPT2.pth
+
+# TDD + Mamba (HF-pretrained, bf16, LN-trainable)
+torchrun --nproc_per_node=8 train.py \
+  --backbone mamba --use-hf-mamba --hf-name state-spaces/mamba-370m-hf \
+  --u2d 0 \
+  --train-his ./data/dataset/train/H_U_his_train.mat \
+  --train-tgt ./data/dataset/train/H_U_pre_train.mat \
+  --save-path model_weights/train_acc/full_shot_tdd/U2U_MAMBA_HF.pth
+
+# FDD + Mamba (custom compact mamba-ssm stack; install mamba-ssm-* wheel)
+torchrun --nproc_per_node=8 train.py \
+  --backbone mamba \
+  --u2d 1 \
+  --train-his ./data/dataset/train/H_U_his_train.mat \
+  --train-tgt ./data/dataset/train/H_D_pre_train.mat \
+  --save-path model_weights/train_acc/full_shot_fdd/U2D_MAMBA.pth
+"""
+
+import os
+from datetime import timedelta
+import argparse
+import numpy as np
+import torch
+import torch.distributed as dist
+from torch import nn
+from torch.utils.data import DataLoader, DistributedSampler
+
+# ---- Environment knobs ----
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True,max_split_size_mb:512")
+os.environ.setdefault("CUDA_DEVICE_MAX_CONNECTIONS", "1")
+
+# ---- Project imports (avoid GPU allocations in __init__) ----
+from data import Dataset_Pro
+from metrics import NMSELoss
+
+
+# --------------------- DDP helpers ---------------------
+def ddp_available() -> bool:
+    return dist.is_available() and dist.is_initialized()
+
+def get_rank() -> int:
+    return dist.get_rank() if ddp_available() else 0
+
+def get_world_size() -> int:
+    return dist.get_world_size() if ddp_available() else 1
+
+def is_main() -> bool:
+    return get_rank() == 0
+
+def setup_ddp_if_launched():
+    ddp_enabled = "LOCAL_RANK" in os.environ
+    if ddp_enabled:
+        dist.init_process_group(backend="nccl", timeout=timedelta(hours=1))
+        local_rank = int(os.environ["LOCAL_RANK"])
+        torch.cuda.set_device(local_rank)
+        device = torch.device(f"cuda:{local_rank}")
+    else:
+        local_rank = 0
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return device, local_rank, ddp_enabled
+
+def barrier():
+    if ddp_available():
+        dist.barrier()
+
+
+# --------------------- Argparse ---------------------
+def parse_args():
+    p = argparse.ArgumentParser()
+
+    # Data / task
+    p.add_argument("--train-his", type=str, default="./data/dataset/train/H_U_his_train.mat",
+                   help="Path to historical CSI .mat file")
+    p.add_argument("--train-tgt", type=str, default="./data/dataset/train/H_U_pre_train.mat",
+                   help="Path to target (future) CSI .mat file")
+    p.add_argument("--u2d", type=int, default=0, help="1 for Uplink->Downlink (FDD), 0 for Uplink->Uplink (TDD)")
+    p.add_argument("--few", type=int, default=0, help="1 for few-shot dataset, else 0")
+
+    # Backbone choice
+    p.add_argument("--backbone", type=str, default="mamba", choices=["mamba", "gpt2"],
+                   help="Backbone type: 'mamba' or 'gpt2'")
+
+    # Mamba options
+    p.add_argument("--use-hf-mamba", action="store_true",
+                   help="If set, use HF pretrained Mamba and feed inputs_embeds; else use compact mamba-ssm stack.")
+    p.add_argument("--hf-name", type=str, default="state-spaces/mamba-370m-hf",
+                   help="HF model id for Mamba backbone (used only if --use-hf-mamba).")
+    p.add_argument("--d-model", type=int, default=768, help="Backbone hidden size for CSI embeddings")
+    p.add_argument("--mamba-layers", type=int, default=6, help="Number of Mamba layers (compact custom)")
+    p.add_argument("--d-state", type=int, default=16)
+    p.add_argument("--d-conv", type=int, default=4)
+    p.add_argument("--expand", type=int, default=2)
+    p.add_argument("--K", type=int, default=48)
+
+    # Model hyperparams (match LLM4CP defaults)
+    p.add_argument("--pred-len", type=int, default=4)
+    p.add_argument("--prev-len", type=int, default=16)
+    p.add_argument("--UQh", type=int, default=1)
+    p.add_argument("--UQv", type=int, default=1)
+    p.add_argument("--BQh", type=int, default=1)
+    p.add_argument("--BQv", type=int, default=1)
+
+    # Training
+    p.add_argument("--epochs", type=int, default=500)
+    p.add_argument("--per-gpu-batch-size", type=int, default=64,
+                   help="Per-process batch size (NOT global).")
+    p.add_argument("--global-batch-size", type=int, default=0,
+                   help="Optional: set a desired global batch and we compute per-GPU + accumulation.")
+    p.add_argument("--accum-steps", type=int, default=1,
+                   help="Gradient accumulation steps (effective batch = per_gpu * world * accum_steps).")
+    p.add_argument("--lr", type=float, default=1e-3)
+    p.add_argument("--weight-decay", type=float, default=1e-4)
+    p.add_argument("--num-workers", type=int, default=8)
+    p.add_argument("--save-path", type=str, default="model_weights/U2U_LLM4CP.pth")
+    p.add_argument("--seed", type=int, default=1337)
+    p.add_argument("--compile", action="store_true", help="Use torch.compile for extra speed (optional)")
+    return p.parse_args()
+
+
+# --------------------- Checkpoint helpers ---------------------
+def save_checkpoint(path, model, optimizer, epoch, best_loss, ddp_enabled):
+    if not is_main():
+        return
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    state = {
+        "model_state": (model.module if ddp_enabled else model).state_dict(),
+        "optimizer_state": optimizer.state_dict(),
+        "epoch": epoch,
+        "best_loss": best_loss,
+    }
+    torch.save(state, path)
+
+def load_checkpoint_cpu_if_any(path, model):
+    start_epoch, best_loss, has_ckpt = 0, float("inf"), False
+    if os.path.exists(path):
+        ckpt = torch.load(path, map_location="cpu")
+        model.load_state_dict(ckpt["model_state"])
+        start_epoch = ckpt.get("epoch", 0) + 1
+        best_loss = ckpt.get("best_loss", best_loss)
+        has_ckpt = True
+    return start_epoch, best_loss, has_ckpt
+
+
+# --------------------- Training / Validation ---------------------
+def count_params(model):
+    total = sum(p.numel() for p in model.parameters())
+    learn = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    return total, learn
+
+def train_one_epoch(model, loader, optimizer, scaler, criterion, device, epoch, ddp_enabled, autocast_dtype, accum_steps):
+    model.train()
+    if ddp_enabled and isinstance(loader.sampler, DistributedSampler):
+        loader.sampler.set_epoch(epoch)
+
+    running_loss = 0.0
+    running_count = 0
+    optimizer.zero_grad(set_to_none=True)
+
+    for i, batch in enumerate(loader):
+        target = batch[0].to(device, non_blocking=True)  # future CSI
+        prev   = batch[1].to(device, non_blocking=True)  # history CSI
+
+        with torch.cuda.amp.autocast(dtype=autocast_dtype):
+            pred = model(prev, None, None, None)
+            loss = criterion(pred, target)
+
+        loss_to_backprop = loss / accum_steps
+        scaler.scale(loss_to_backprop).backward()
+
+        if (i + 1) % accum_steps == 0:
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad(set_to_none=True)
+
+        bsz = target.shape[0]
+        running_loss += loss.detach().float().item() * bsz
+        running_count += bsz
+
+    world = get_world_size()
+    device_cpu = torch.device("cpu")
+    loss_tensor = torch.tensor(running_loss, dtype=torch.float32, device=device)
+    cnt_tensor = torch.tensor(running_count, dtype=torch.float32, device=device)
+    if world > 1:
+        dist.all_reduce(loss_tensor, op=dist.ReduceOp.SUM)
+        dist.all_reduce(cnt_tensor, op=dist.ReduceOp.SUM)
+    epoch_loss = (loss_tensor / cnt_tensor).to(device_cpu).item()
+    return epoch_loss
+
+@torch.no_grad()
+def validate(model, loader, criterion, device, autocast_dtype):
+    model.eval()
+    running_loss = 0.0
+    running_count = 0
+
+    for batch in loader:
+        target = batch[0].to(device, non_blocking=True)
+        prev   = batch[1].to(device, non_blocking=True)
+        with torch.cuda.amp.autocast(dtype=autocast_dtype):
+            pred = model(prev, None, None, None)
+            loss = criterion(pred, target)
+        bsz = target.shape[0]
+        running_loss += loss.detach().float().item() * bsz
+        running_count += bsz
+
+    world = get_world_size()
+    device_cpu = torch.device("cpu")
+    loss_tensor = torch.tensor(running_loss, dtype=torch.float32, device=device)
+    cnt_tensor = torch.tensor(running_count, dtype=torch.float32, device=device)
+    if world > 1:
+        dist.all_reduce(loss_tensor, op=dist.ReduceOp.SUM)
+        dist.all_reduce(cnt_tensor, op=dist.ReduceOp.SUM)
+    val_loss = (loss_tensor / cnt_tensor).to(device_cpu).item()
+    return val_loss
+
+
+# --------------------- Main ---------------------
+def main():
+    args = parse_args()
+
+    # Sanity message so we don't mix up files
+    if args.u2d:
+        if "D_pre" not in os.path.basename(args.train_tgt) and is_main():
+            print(f"[WARN] --u2d=1 but train-tgt looks uplink-ish: {args.train_tgt}")
+            print("       Make sure this points to H_D_pre_train.mat (downlink).")
+    else:
+        if "U_pre" not in os.path.basename(args.train_tgt) and is_main():
+            print(f"[WARN] --u2d=0 but train-tgt doesn't look like H_U_pre_*.mat: {args.train_tgt}")
+
+    torch.backends.cudnn.benchmark = True
+    torch.set_float32_matmul_precision("high")
+
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+
+    device, local_rank, ddp_enabled = setup_ddp_if_launched()
+    if is_main():
+        print(f"DDP: {ddp_enabled} | device: {device} | local_rank: {local_rank}")
+
+    per_gpu_bs = args.per_gpu_batch_size
+    accum_steps = args.accum_steps
+    world = get_world_size()
+    if args.global_batch_size > 0:
+        per_gpu_bs = max(1, args.global_batch_size // max(1, world * accum_steps))
+        if is_main():
+            print(f"[BatchSizing] Requested global {args.global_batch_size} -> per_gpu {per_gpu_bs} with accum {accum_steps}")
+    eff_global = per_gpu_bs * max(1, world) * max(1, accum_steps)
+    if is_main():
+        print(f"Effective global batch size: {eff_global} (per_gpu={per_gpu_bs}, world={world}, accum={accum_steps})")
+
+    # Datasets (CPU)
+    train_set = Dataset_Pro(args.train_his, args.train_tgt, is_train=1, is_U2D=args.u2d, is_few=args.few)
+    val_set   = Dataset_Pro(args.train_his, args.train_tgt, is_train=0, is_U2D=args.u2d)
+
+    if ddp_enabled:
+        train_sampler = DistributedSampler(train_set, shuffle=True, drop_last=True)
+        val_sampler   = DistributedSampler(val_set, shuffle=False, drop_last=False)
+    else:
+        train_sampler = None
+        val_sampler   = None
+
+    train_loader = DataLoader(
+        dataset=train_set,
+        batch_size=per_gpu_bs,
+        shuffle=(train_sampler is None),
+        sampler=train_sampler,
+        num_workers=args.num_workers,
+        pin_memory=True,
+        persistent_workers=(args.num_workers > 0),
+        drop_last=True,
+    )
+    val_loader = DataLoader(
+        dataset=val_set,
+        batch_size=per_gpu_bs,
+        shuffle=False,
+        sampler=val_sampler,
+        num_workers=args.num_workers,
+        pin_memory=True,
+        persistent_workers=(args.num_workers > 0),
+        drop_last=False,
+    )
+
+    # ----- Build model on CPU first (avoid touching GPU:0), THEN move to device -----
+    if args.backbone == "mamba":
+        from models.MAMBA import Model as BackboneModel
+        model_cpu = BackboneModel(
+            use_hf=args.use_hf_mamba,
+            hf_name=args.hf_name,
+            d_model=args.d_model,
+            mamba_layers=args.mamba_layers,
+            d_state=args.d_state,
+            d_conv=args.d_conv,
+            expand=args.expand,
+            pred_len=args.pred_len, prev_len=args.prev_len,
+            use_gpu=0, gpu_id=local_rank,          # build on CPU
+            K=args.K, UQh=args.UQh, UQv=args.UQv, BQh=args.BQh, BQv=args.BQv
+        )
+        if is_main():
+            print(f"[Backbone] Mamba | use_hf={args.use_hf_mamba} | hf_name={args.hf_name if args.use_hf_mamba else 'custom-compact'}")
+    else:
+        from models.GPT4CP import Model as BackboneModel
+        model_cpu = BackboneModel(
+            pred_len=args.pred_len, prev_len=args.prev_len,
+            UQh=args.UQh, UQv=args.UQv, BQh=args.BQh, BQv=args.BQv,
+            use_gpu=0, gpu_id=local_rank           # build on CPU
+        )
+        if is_main():
+            print("[Backbone] GPT-2 (original)")
+
+    start_epoch, best_loss, has_ckpt = load_checkpoint_cpu_if_any(args.save_path, model_cpu)
+    if is_main():
+        if has_ckpt:
+            print(f"[Resume] Loaded CPU checkpoint '{args.save_path}' at epoch {start_epoch}, best_loss={best_loss:.7f}")
+        else:
+            print(f"[Resume] No checkpoint at '{args.save_path}'. Starting fresh.")
+
+    if args.compile and hasattr(torch, "compile"):
+        model_cpu = torch.compile(model_cpu, mode="max-autotune")
+
+    model = model_cpu.to(device, non_blocking=True)
+
+    # Optimizer / Scheduler
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=args.lr, betas=(0.9, 0.999),
+        weight_decay=args.weight_decay
+    )
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=150, gamma=0.1)
+
+    # AMP
+    if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
+        autocast_dtype = torch.bfloat16
+        use_scaler = False
+    else:
+        autocast_dtype = torch.float16
+        use_scaler = True
+    scaler = torch.cuda.amp.GradScaler(enabled=use_scaler)
+
+    # DDP
+    if ddp_enabled:
+        model = nn.parallel.DistributedDataParallel(
+            model,
+            device_ids=[local_rank],
+            output_device=local_rank,
+            find_unused_parameters=True,   # keep True due to frozen HF blocks / adapter-style training
+        )
+
+    criterion = NMSELoss().to(device)
+
+    barrier()
+
+    if is_main():
+        total, learn = count_params(model.module if ddp_enabled else model)
+        print(f"Number of parameters: {total/1e6:.5f}M | Learnable: {learn/1e6:.5f}M")
+
+    epochs = args.epochs
+    for epoch in range(start_epoch, epochs):
+        train_loss = train_one_epoch(
+            model, train_loader, optimizer, scaler, criterion,
+            device, epoch, ddp_enabled, autocast_dtype, accum_steps
+        )
+        val_loss = validate(model, val_loader, criterion, device, autocast_dtype)
+
+        if is_main():
+            print(f"Epoch {epoch+1}/{epochs} | train NMSE: {train_loss:.7f} | val NMSE: {val_loss:.7f} | lr: {optimizer.param_groups[0]['lr']:.6g}")
+
+        if val_loss < best_loss:
+            best_loss = val_loss
+            save_checkpoint(args.save_path, model, optimizer, epoch, best_loss, ddp_enabled)
+            if is_main():
+                print(f"[Checkpoint] New best val NMSE: {best_loss:.7f} -> saved to {args.save_path}")
+
+        scheduler.step()
+
+    if is_main():
+        total, learn = count_params(model.module if ddp_enabled else model)
+        print(f"FINAL | Number of parameters: {total/1e6:.5f}M | Learnable: {learn/1e6:.5f}M")
+
+    if ddp_available():
+        dist.destroy_process_group()
+
+
+if __name__ == "__main__":
+    main()
+
+# Train for TDD
+# torchrun --nproc_per_node=8 train_mamba_acc.py \
+#   --backbone mamba \
+#   --use-hf-mamba \
+#   --hf-name state-spaces/mamba-130m-hf \
+#   --u2d 0 \
+#   --train-his ./data/dataset/train/H_U_his_train.mat \
+#   --train-tgt ./data/dataset/train/H_U_pre_train.mat \
+#   --save-path model_weights/train_acc/full_shot_tdd/mamba/U2U_LLM4CP.pth
+
+# Train for FDD
+# torchrun --nproc_per_node=8 train_mamba_acc.py \
+#   --backbone mamba \
+#   --use-hf-mamba \
+#   --hf-name state-spaces/mamba-130m-hf \
+#   --u2d 1 \
+#   --train-his ./data/dataset/train/H_U_his_train.mat \
+#   --train-tgt ./data/dataset/train/H_D_pre_train.mat \
+#   --save-path model_weights/train_acc/full_shot_fdd/mamba/U2D_LLM4CP.pth
