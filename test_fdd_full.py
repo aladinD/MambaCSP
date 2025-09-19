@@ -17,9 +17,19 @@ import tqdm
 from pvec import pronyvec
 from PAD import PAD3
 
+# put near the top, after imports
+def load_pickled_model(path, device):
+    """Load a pickled nn.Module under PyTorch>=2.6 safely (trusted checkpoints)."""
+    try:
+        m = torch.load(path, map_location=device, weights_only=False)  # <-- key change
+    except TypeError:
+        # older torch doesn't have weights_only kwarg
+        m = torch.load(path, map_location=device)
+    return m.to(device).eval()
+
 if __name__ == "__main__":
     # out name
-    out_name = "test_fdd.csv"
+    out_name = "fdd_mamba.csv"
 
     # demo
     device = torch.device('cuda:0')
@@ -38,6 +48,7 @@ if __name__ == "__main__":
     # }
 
     model_path = {
+            'my_mamba': './model_weights/train_acc/full_shot_fdd/mamba/U2D_LLM4CP_pickled.pth',
             'my_gpt': './model_weights/train_acc/full_shot_fdd/U2D_LLM4CP_pickled.pth',
             'gpt': './data/model/weights/full_shot_fdd/U2D_LLM4CP.pth',
             'transformer': './data/model/weights/full_shot_fdd/U2D_trans.pth',
@@ -50,6 +61,11 @@ if __name__ == "__main__":
     model_test_enable = ['gpt', 'transformer', 'cnn', 'gru', 'lstm', 'rnn', 'np']
     if 'my_gpt' in model_path:
         model_test_enable.insert(0, 'my_gpt')
+
+    if 'my_mamba' in model_path:
+        model_test_enable.insert(0, 'my_mamba')
+
+    model_test_enable = ["my_mamba"] # only mamba for now
 
     prev_len = 16
     label_len = 12
@@ -69,8 +85,15 @@ if __name__ == "__main__":
     for i in range(len(model_test_enable)):
         print("---------------------------------------------------------------")
         print("loading ", i + 1, "th model......", model_test_enable[i])
-        if model_test_enable[i] not in ['pad', 'pvec', 'np']:
-            model = torch.load(model_path[model_test_enable[i]], map_location=device).to(device)
+
+        # if model_test_enable[i] not in ['pad', 'pvec', 'np']:
+        #     model = torch.load(model_path[model_test_enable[i]], map_location=device).to(device)
+
+        name_i = model_test_enable[i]
+
+        if name_i not in ['pad', 'pvec', 'np']:
+            model = load_pickled_model(model_path[name_i], device)
+
         for speed in range(0, 10):
             test_loss_stack = []
             test_loss_stack_se = []
@@ -83,7 +106,7 @@ if __name__ == "__main__":
             test_data_prev = test_data_prev / std
             test_data_pred = test_data_pred / std
             lens, _, _, _ = test_data_prev.shape
-            if model_test_enable[i] in ['my_gpt', 'gpt', 'transformer', 'rnn', 'lstm', 'gru', 'cnn', 'np']:
+            if model_test_enable[i] in ['my_mamba', 'my_gpt', 'gpt', 'transformer', 'rnn', 'lstm', 'gru', 'cnn', 'np']:
                 if model_test_enable[i] != 'np':
                     model.eval()
                 prev_data = LoadBatch_ofdm_2(test_data_prev)
@@ -96,7 +119,7 @@ if __name__ == "__main__":
                         pred = pred_data[cyt * bs:(cyt + 1) * bs, :, :].to(device)
                         prev = rearrange(prev, 'b m l k -> (b m) l k')
                         pred = rearrange(pred, 'b m l k -> (b m) l k')
-                        if model_test_enable[i] in ['gpt', 'my_gpt']:
+                        if model_test_enable[i] in ['gpt', 'my_gpt', 'my_mamba']:
                             out = model(prev, None, None, None)
                         elif model_test_enable[i] == 'transformer':
                             encoder_input = prev

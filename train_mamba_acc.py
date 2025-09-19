@@ -120,8 +120,8 @@ def parse_args():
     p.add_argument("--BQv", type=int, default=1)
 
     # Training
-    p.add_argument("--epochs", type=int, default=500)
-    p.add_argument("--per-gpu-batch-size", type=int, default=64,
+    p.add_argument("--epochs", type=int, default=150)
+    p.add_argument("--per-gpu-batch-size", type=int, default=32,
                    help="Per-process batch size (NOT global).")
     p.add_argument("--global-batch-size", type=int, default=0,
                    help="Optional: set a desired global batch and we compute per-GPU + accumulation.")
@@ -400,7 +400,7 @@ def main():
 if __name__ == "__main__":
     main()
 
-# Train for TDD
+# Train for TDD (large model)
 # torchrun --nproc_per_node=8 train_mamba_acc.py \
 #   --backbone mamba \
 #   --use-hf-mamba \
@@ -408,7 +408,7 @@ if __name__ == "__main__":
 #   --u2d 0 \
 #   --train-his ./data/dataset/train/H_U_his_train.mat \
 #   --train-tgt ./data/dataset/train/H_U_pre_train.mat \
-#   --save-path model_weights/train_acc/full_shot_tdd/mamba/U2U_LLM4CP.pth
+#   --save-path model_weights/train_acc/full_shot_tdd/hybrid_mamba/U2U_LLM4CP.pth
 
 # Train for FDD
 # torchrun --nproc_per_node=8 train_mamba_acc.py \
