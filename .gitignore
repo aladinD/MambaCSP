@@ -8,6 +8,8 @@ venv/
 data/
 model_weights/
 mamba/
+dmrs_datasets/
+dmrs_model_weights/
 
 # Big JSONS
 *_ds.json

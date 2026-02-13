@@ -380,17 +380,51 @@ if __name__ == "__main__":
     main()
 
 
-# Train for TDD
-# torchrun --nproc_per_node=8 train_acc.py 
-# torchrun --nproc_per_node=8 train_acc.py \
-#   --u2d 0 \
-#   --train-his ./data/dataset/train/H_U_his_train.mat \
-#   --train-tgt ./data/dataset/train/H_U_pre_train.mat \
-#   --save-path model_weights/train_acc/full_shot_tdd_TEST/U2U_LLM4CP.pth
+## Pattern 1
 
-# Train for FDD
-# torchrun --nproc_per_node=8 train_acc.py \
+# Train for TDD -- Pattern 1
+# torchrun --nproc_per_node=8 train_acc_dmrs.py \
+#   --u2d 0 \
+#   --train-his ./dmrs_datasets/pattern1_type1_sparse/TDD/H_U_his_train.mat \
+#   --train-tgt ./dmrs_datasets/pattern1_type1_sparse/TDD/H_U_pre_train.mat \
+#   --save-path dmrs_model_weights/pattern1_type1_sparse/TDD/U2U_LLM4CP.pth
+
+# Train for FDD -- Pattern 1
+# torchrun --nproc_per_node=8 train_acc_dmrs.py \
 #   --u2d 1 \
-#   --train-his ./data/dataset/train/H_U_his_train.mat \
-#   --train-tgt ./data/dataset/train/H_D_pre_train.mat \
-#   --save-path model_weights/train_acc/full_shot_fdd/U2D_LLM4CP.pth
+#   --train-his ./dmrs_datasets/pattern1_type1_sparse/FDD/H_U_his_train.mat \
+#   --train-tgt ./dmrs_datasets/pattern1_type1_sparse/FDD/H_D_pre_train.mat \
+#   --save-path dmrs_model_weights/pattern1_type1_sparse/FDD/U2D_LLM4CP.pth
+
+
+## Pattern 2
+
+# Train for TDD -- Pattern 2
+# torchrun --nproc_per_node=8 train_acc_dmrs.py \
+#   --u2d 0 \
+#   --train-his ./dmrs_datasets/pattern2_type2_densefreq/TDD/H_U_his_train.mat \
+#   --train-tgt ./dmrs_datasets/pattern2_type2_densefreq/TDD/H_U_pre_train.mat \
+#   --save-path dmrs_model_weights/pattern2_type2_densefreq/TDD/U2U_LLM4CP.pth
+
+# Train for FDD -- Pattern 2
+# torchrun --nproc_per_node=8 train_acc_dmrs.py \
+#   --u2d 1 \
+#   --train-his ./dmrs_datasets/pattern2_type2_densefreq/FDD/H_U_his_train.mat \
+#   --train-tgt ./dmrs_datasets/pattern2_type2_densefreq/FDD/H_D_pre_train.mat \
+#   --save-path dmrs_model_weights/pattern2_type2_densefreq/FDD/U2D_LLM4CP.pth
+
+## Pattern 3
+
+# Train for TDD -- Pattern 3
+# torchrun --nproc_per_node=8 train_acc_dmrs.py \
+#   --u2d 0 \
+#   --train-his ./dmrs_datasets/pattern3_highmob_dense/TDD/H_U_his_train.mat \
+#   --train-tgt ./dmrs_datasets/pattern3_highmob_dense/TDD/H_U_pre_train.mat \
+#   --save-path dmrs_model_weights/pattern3_highmob_dense/TDD/U2U_LLM4CP.pth
+
+# Train for FDD -- Pattern 3
+# torchrun --nproc_per_node=8 train_acc_dmrs.py \
+#   --u2d 1 \
+#   --train-his ./dmrs_datasets/pattern3_highmob_dense/FDD/H_U_his_train.mat \
+#   --train-tgt ./dmrs_datasets/pattern3_highmob_dense/FDD/H_D_pre_train.mat \
+#   --save-path dmrs_model_weights/pattern3_highmob_dense/FDD/U2D_LLM4CP.pth
