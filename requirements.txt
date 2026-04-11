@@ -9,3 +9,6 @@ transformers==4.37.2
 peft==0.11.1
 einops==0.7.0
 tensorboard
+# Optional for local Mamba backend (use_hf=False in models/MAMBA.py):
+mamba-ssm
+causal-conv1d
