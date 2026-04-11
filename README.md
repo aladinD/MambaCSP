@@ -24,11 +24,11 @@
 >
 > Our results demonstrate that hybrid state space architectures provide a promising direction for scalable and hardware-efficient AI-native CSI prediction in future wireless networks.
 
-## CSP architecture
+## CSI Prediction Pipeline
 
 ![MambaCSP CSP pipeline](src/MambaCSP_pipeline.png)
 
-<p align="center"><em>Proposed MambaCSP architecture with patch-mixer attention and Mamba blocks.</em></p>
+<p align="center"><em>Proposed universal CSI prediction pipeline for both LLM and SSM architectures.</em></p>
 
 ## Highlights
 
@@ -48,7 +48,7 @@
 
 ## Environment
 
-- Python 3.10
+- Tested with Python 3.10
 - CUDA-capable NVIDIA GPU
 - MATLAB with [QuaDRiGa](https://quadriga-channel-model.de/) for dataset generation
 - Install dependencies:
@@ -217,16 +217,7 @@ Output files are stored under `dmrs_results/`, including:
 
 ## Citation
 
-If you use this repository, cite both the MambaCSP manuscript and the LLM4CP baseline:
-
-```bibtex
-@article{liu2024llm4cp,
-  title={LLM4CP: Adapting Large Language Models for Channel Prediction},
-  author={Liu, Boxun and Liu, Xuanyu and Gao, Shijian and Cheng, Xiang and Yang, Liuqing},
-  journal={arXiv preprint arXiv:2406.14440},
-  year={2024}
-}
-```
+If you use this repository, cite our paper!
 
 ```bibtex
 @misc{mambacsp2026,
@@ -236,8 +227,3 @@ If you use this repository, cite both the MambaCSP manuscript and the LLM4CP bas
   note={Add final published/BibTeX entry here}
 }
 ```
-
-## License
-
-No explicit license file is currently included in this repository. Please add one before broad redistribution.
-
