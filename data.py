@@ -1,3 +1,10 @@
+"""Utilities for preparing OFDM channel prediction datasets.
+
+The functions here load historical and future CSI sequences from MATLAB files,
+optionally split train/validation sets, inject random-SNR complex noise,
+normalize sample power, and convert complex tensors into PyTorch-friendly real
+representations for model training and evaluation.
+"""
 import torch.utils.data as data
 import torch
 import numpy as np
@@ -7,6 +14,7 @@ from numpy import random
 
 
 def noise(H, SNR):
+    """Add complex Gaussian noise at a target SNR."""
     sigma = 10 ** (- SNR / 10)
     add_noise = np.sqrt(sigma / 2) * (np.random.randn(*H.shape) + 1j * np.random.randn(*H.shape))
     add_noise = add_noise * np.sqrt(np.mean(np.abs(H) ** 2))
@@ -19,12 +27,11 @@ class Dataset_Pro(data.Dataset):
         super(Dataset_Pro, self).__init__()
         self.SNR = SNR
         self.ir = ir
-        H_his = hdf5storage.loadmat(file_path_r)['H_U_his_train']  # v,b,l,k,a,b,c
+        H_his = hdf5storage.loadmat(file_path_r)['H_U_his_train']
         if is_U2D:
-            H_pre = hdf5storage.loadmat(file_path_t)["H_D_pre_train"]  # v,b,l,k,a,b,c
+            H_pre = hdf5storage.loadmat(file_path_t)["H_D_pre_train"]
         else:
-            H_pre = hdf5storage.loadmat(file_path_t)["H_U_pre_train"]  # v,b,l,k,a,b,c
-        # print(H_his.shape, H_pre.shape)
+            H_pre = hdf5storage.loadmat(file_path_t)["H_U_pre_train"]
 
         batch = H_pre.shape[1]
         if is_train:
@@ -57,8 +64,8 @@ class Dataset_Pro(data.Dataset):
         if is_few == 1:
             H_pre = H_pre[::10, ...]
             H_his = H_his[::10, ...]
-        self.pred = H_pre  # b,16,(48*2)
-        self.prev = H_his  # b,4,(48*2)
+        self.pred = H_pre
+        self.prev = H_his
 
     def __getitem__(self, index):
         return self.pred[index, :].float(), \
@@ -69,8 +76,6 @@ class Dataset_Pro(data.Dataset):
 
 
 def LoadBatch_ofdm_2(H):
-    # H: B,T,K,mul     [tensor complex]
-    # out:B,T,K,mul*2  [tensor real]
     B, T, K, mul = H.shape
     H_real = np.zeros([B, T, K, mul, 2])
     H_real[:, :, :, :, 0] = H.real
@@ -81,8 +86,6 @@ def LoadBatch_ofdm_2(H):
 
 
 def LoadBatch_ofdm_1(H):
-    # H: B,T,mul     [tensor complex]
-    # out:B,T,mul*2  [tensor real]
     B, T, mul = H.shape
     H_real = np.zeros([B, T, mul, 2])
     H_real[:, :, :, 0] = H.real
@@ -93,8 +96,6 @@ def LoadBatch_ofdm_1(H):
 
 
 def LoadBatch_ofdm(H, num=32):
-    # H: B,T,mul             [tensor complex]
-    # out:B*num,T,mul*2/num  [tensor real]
     B, T, mul = H.shape
     H = rearrange(H, 'b t (k a) ->(b a) t k', a=num)
     H_real = np.zeros([B * num, T, mul // num, 2])
@@ -106,8 +107,6 @@ def LoadBatch_ofdm(H, num=32):
 
 
 def Transform_TDD_FDD(H, Nt=4, Nr=4):
-    # H: B,T,mul    [tensor real]
-    # out:B',Nt,Nr  [tensor complex]
     H = H.reshape(-1, Nt, Nr, 2)
     H_real = H[..., 0]
     H_imag = H[..., 1]

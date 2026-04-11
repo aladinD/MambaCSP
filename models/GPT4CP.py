@@ -1,3 +1,16 @@
+"""GPT-2 based CSI prediction network.
+
+This module defines `Model` for sequence forecasting of CSI coefficients.
+Each sample is normalized, split into delay-domain and frequency-domain branches,
+then fused and projected through lightweight residual CNN blocks. The fused tensor
+is embedded with `DataEmbedding` and passed through a truncated GPT-2 backbone.
+A projection head maps decoder features back to packed real/imaginary channel
+coefficients, and the result is de-normalized.
+
+The class keeps the same preprocessing and patching structure as other CSP models
+while using GPT-2 as the temporal backbone.
+"""
+
 import os
 import numpy as np
 import torch
@@ -8,7 +21,7 @@ from torch import optim
 from transformers import GPT2ForSequenceClassification
 from transformers.models.gpt2.modeling_gpt2 import GPT2Model
 from einops import rearrange
-from Embed import DataEmbedding
+from models.csp_embed import DataEmbedding
 
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
