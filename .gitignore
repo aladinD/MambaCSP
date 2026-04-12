@@ -2,14 +2,12 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.mat
+*.pth
+*.csv
 
 # Folders
 venv/
-data/
-model_weights/
-mamba/
-dmrs_datasets/
-dmrs_model_weights/
 
 # Big JSONS
 *_ds.json
