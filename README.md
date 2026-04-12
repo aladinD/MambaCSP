@@ -1,44 +1,29 @@
-# MambaCSP: Mamba-based CSI Prediction for DMRS
+# 🐍 MambaCSP: Mamba-based CSI Prediction for DMRS 🚀
 
 <p align="center">
-<strong>MambaCSP ## add snake/mamba emoji here: Hybrid-Attention State Space Models for Hardware-Efficient Channel State Prediction</strong>
+  <strong>Hybrid-Attention State-Space Models for Hardware-Efficient Channel State Prediction</strong>
 </p>
 
 <p align="center">
 <code>PyTorch</code> · <code>DMRS</code> · <code>CSI Prediction</code> · <code>MISO-OFDM</code> · <code>Mamba</code>
 </p>
 
-## Abstract
+## Abstract 📜
+Recent works have demonstrated that attention-based transformer and large language model (LLM) architectures can achieve strong channel state prediction (CSP) performance by capturing long-range temporal dependencies across channel state information (CSI) sequences. However, these models suffer from quadratic scaling in sequence length, leading to substantial computational cost, memory consumption, and inference latency, which limits their applicability in real-time and resource-constrained wireless deployments. In this paper, we investigate whether selective state space models (SSMs) can serve as a hardware-efficient alternative for CSI prediction. We propose MambaCSP, a hybrid-attention SSM architecture that replaces LLM-based prediction backbones with a linear-time Mamba model. To overcome the local-only dependencies of pure SSMs, we introduce lightweight patch-mixer attention layers that periodically inject cross-token attentions, helping with long-context CSI prediction. Extensive MISO-OFDM simulations show that MambaCSP improves prediction accuracy over LLM-based approaches by 9--12%, while delivering up to 3.0x higher throughput, 2.6x lower VRAM usage, and 2.9x faster inference. Our results demonstrate that hybrid state space architectures provide a promising direction for scalable and hardware-efficient AI-native CSI prediction in future wireless networks.
 
-> Recent works have demonstrated that attention-based transformer and large language model (LLM) architectures can achieve strong channel state prediction (CSP) performance by capturing long-range temporal dependencies across channel state information (CSI) sequences.
->
-> However, these models suffer from quadratic scaling in sequence length, leading to substantial computational cost, memory consumption, and inference latency, which limits their applicability in real-time and resource-constrained wireless deployments.
->
-> In this paper, we investigate whether selective state space models (SSMs) can serve as a hardware-efficient alternative for CSI prediction.
->
-> We propose MambaCSP, a hybrid-attention SSM architecture that replaces LLM-based prediction backbones with a linear-time Mamba model.
->
-> To overcome the local-only dependencies of pure SSMs, we introduce lightweight patch-mixer attention layers that periodically inject cross-token attentions, helping with long-context CSI prediction.
->
-> Extensive MISO-OFDM simulations show that MambaCSP improves prediction accuracy over LLM-based approaches by 9--12%, while delivering up to 3.0x higher throughput, 2.6x lower VRAM usage, and 2.9x faster inference.
->
-> Our results demonstrate that hybrid state space architectures provide a promising direction for scalable and hardware-efficient AI-native CSI prediction in future wireless networks.
+## CSI Prediction Pipeline 🛤️
 
-## remove spacing here, make it one coherent abstract block, also no weird > please
-
-## CSI Prediction Pipeline
-
-![CSI Prediction Pipeline](src/MambaCSP_pipeline.png)
+<img src="src/MambaCSP_pipeline.png" alt="CSI Prediction Pipeline" width="92%"/>
 
 <p align="center"><em>Proposed universal CSI prediction pipeline for both LLM and SSM architectures.</em></p>
 
-## Hybrid-Attention MambaCSP Architecture
+## Hybrid-Attention MambaCSP Architecture 🧠
 
-![Hybrid-Attention MambaCSP Architecture](src/MambaCSP_architecture.png)
+<img src="src/MambaCSP_architecture.png" alt="Hybrid-Attention MambaCSP Architecture" width="68%"/>
 
 <p align="center"><em>Hybrid-attention MambaCSP block at layer l.</em></p>
 
-## Highlights
+## Highlights ✨
 
 - MambaCSP repository for DMRS channel prediction on time-frequency CSI tensors.
 - End-to-end, reproducible experimentation flow: data generation, training, and test evaluation.
@@ -46,15 +31,15 @@
 - Built for distributed multi-GPU training with mixed precision support.
 - Includes checkpoints and results folders prepared for multiple speed-pattern scenarios.
 
-## Contents
+## Contents 📚
 
-- [Environment](#environment)
-- [Dataset generation](#dataset-generation-dmrs)
-- [Training](#training)
-- [Testing](#testing)
-- [Citation](#citation)
+- [Environment](#environment-⚙️)
+- [Dataset Generation](#dataset-generation-dmrs-🧪)
+- [Training](#training-🧱)
+- [Testing](#testing-🔍)
+- [Citation](#citation-📖)
 
-## Environment
+## Environment ⚙️
 
 - Tested with Python 3.10
 - CUDA-capable NVIDIA GPU
@@ -65,7 +50,7 @@
 pip install -r requirements.txt
 ```
 
-## Dataset Generation (DMRS)
+## Dataset Generation (DMRS) 🧪
 
 `dataset_generation.m` is the dataset entry point.
 
@@ -108,7 +93,7 @@ Default pattern names:
 
 `run_training.sh` and `test_dmrs.py` expect this exact layout.
 
-## Training
+## Training 🧱
 
 Main training entrypoints:
 
@@ -185,7 +170,7 @@ dmrs_model_weights/<pattern>/<TDD|FDD>/<U2U|U2D>_LLM4CP.pth
 - Validation losses are reduced across ranks and checkpoints are saved by rank 0.
 - AMP uses mixed precision and optional BF16 paths to reduce memory and improve throughput.
 
-## Testing
+## Testing 🔍
 
 Main entrypoint:
 
@@ -223,9 +208,9 @@ Output files are stored under `dmrs_results/`, including:
 
 `test_dmrs.py` evaluates all 10 user speeds by default.
 
-## Citation
+## Citation 📖
 
-If you use this repository, cite our paper!
+If you use this repository, cite our paper:
 
 ```bibtex
 @misc{mambacsp2026,
