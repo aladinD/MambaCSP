@@ -1,7 +1,7 @@
 # MambaCSP: Mamba-based CSI Prediction for DMRS
 
 <p align="center">
-<strong>A hybrid-attention selective state-space framework for scalable channel state prediction</strong>
+<strong>MambaCSP ## add snake/mamba emoji here: Hybrid-Attention State Space Models for Hardware-Efficient Channel State Prediction</strong>
 </p>
 
 <p align="center">
@@ -24,11 +24,19 @@
 >
 > Our results demonstrate that hybrid state space architectures provide a promising direction for scalable and hardware-efficient AI-native CSI prediction in future wireless networks.
 
+## remove spacing here, make it one coherent abstract block, also no weird > please
+
 ## CSI Prediction Pipeline
 
-![MambaCSP CSP pipeline](src/MambaCSP_pipeline.png)
+![CSI Prediction Pipeline](src/MambaCSP_pipeline.png)
 
 <p align="center"><em>Proposed universal CSI prediction pipeline for both LLM and SSM architectures.</em></p>
+
+## Hybrid-Attention MambaCSP Architecture
+
+![Hybrid-Attention MambaCSP Architecture](src/MambaCSP_architecture.png)
+
+<p align="center"><em>Hybrid-attention MambaCSP block at layer l.</em></p>
 
 ## Highlights
 
