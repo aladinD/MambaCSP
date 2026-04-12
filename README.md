@@ -13,7 +13,7 @@ Recent works have demonstrated that attention-based transformer and large langua
 
 <div align="center">
   <img src="src/MambaCSP_architecture.png" alt="Hybrid-Attention MambaCSP Architecture" width="55%"/>
-  <p><em>Hybrid-attention MambaCSP block at layer l.</em></p>
+  <p><em>Hybrid-attention MambaCSP block at layer $l$.</em></p>
 </div>
 
 ## Highlights 🚀
