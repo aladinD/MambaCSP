@@ -158,11 +158,6 @@ dmypy.json
 *.h5
 *.tar
 *.tar.gz
-# Keep experiment folders local, but ignore generated contents
-dmrs_datasets/
-dmrs_model_weights/
-!dmrs_datasets/.gitkeep
-!dmrs_model_weights/.gitkeep
 
 # Lightning-Hydra-Template
 configs/local/default.yaml
