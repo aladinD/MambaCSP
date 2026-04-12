@@ -24,14 +24,6 @@ Recent works have demonstrated that attention-based transformer and large langua
 - Built for distributed multi-GPU training with mixed precision support.
 - Includes checkpoints and results folders prepared for multiple speed-pattern scenarios.
 
-## Contents 📚
-
-- [Environment](#environment-⚙️)
-- [Dataset Generation](#dataset-generation-dmrs-🧪)
-- [Training](#training-🧱)
-- [Testing](#testing-🔍)
-- [Citation](#citation-📖)
-
 ## Environment ⚙️
 
 - Tested with Python 3.10
