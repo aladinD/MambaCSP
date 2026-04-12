@@ -5,7 +5,7 @@ Recent works have demonstrated that attention-based transformer and large langua
 
 ## CSI Prediction Pipeline ✨
 
-<img src="src/MambaCSP_pipeline.png" alt="CSI Prediction Pipeline" width="92%"/>
+<img src="src/MambaCSP_pipeline.png" alt="CSI Prediction Pipeline" width="95%"/>
 
 <p align="center"><em>Proposed universal CSI prediction pipeline for both LLM and SSM architectures.</em></p>
 
